@@ -1,0 +1,207 @@
+<html>
+    <head>
+      <meta charset="UTF-8">
+        <title>spectrogram</title>
+        <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+        <script id="vs" type="x-shader/x-vertex">#version 300 es
+layout (location = 0) in vec2 position;
+layout (location = 1) in vec2 textureCoord;
+out vec2 vTextureCoord;
+
+void main() {
+  vTextureCoord = textureCoord;
+  gl_Position = vec4(position.xy, 0, 1);
+}
+        </script>
+        <script id="fs" type="x-shader/x-fragment">#version 300 es
+precision mediump float;
+uniform sampler2D tex;
+uniform vec2 inner;
+in vec2 vTextureCoord;
+out vec4 outColor;
+
+void main() {
+  float x = 1.0 - texture(tex, vTextureCoord).x;
+  float y = 0.0;
+  if(x <= inner.x) {
+    y = inner.y / inner.x * x;
+  } else {
+    y = (1.0 - inner.y) / (1.0 - inner.x) * (x - 1.0) + 1.0;
+  }
+  float h = y * 5.0 / 8.0;
+  float s = 1.0;
+  float v = 1.0;
+  vec4 t = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+  vec3 p = abs(fract(vec3(h) + t.xyz) * 6.0 - vec3(t.w));
+  vec3 color = v * mix(vec3(t.x), clamp(p - vec3(t.x), 0.0, 1.0), s);
+  vec4 smpColor = vec4(color, 1);
+  outColor = smpColor;
+}
+        </script>
+        <script type="text/javascript">
+function attachShader(gl, program, src, type) {
+    const shader = gl.createShader(type);
+    gl.shaderSource(shader, src);
+    gl.compileShader(shader);
+    if(!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        alert(gl.getShaderInfoLog(shader));
+    }
+    gl.attachShader(program, shader);
+    gl.deleteShader(shader);
+}
+var gl = null;
+var program = null;
+var vtx = null;
+var vao = null;
+function main() {
+  const canvas = document.querySelector("#glCanvas");
+  // GL コンテキストを初期化する
+  gl = canvas.getContext("webgl2");
+
+  const tex = gl.createTexture();
+  const img = new Image();
+  img.onload = function() {
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_NEAREST);
+    gl.generateMipmap(gl.TEXTURE_2D);
+    gl.bindTexture(gl.TEXTURE_2D, null);
+
+    
+    // WebGL が使用可能で動作している場合にのみ続行します
+    if (gl === null) {
+      alert("WebGL を初期化できません。ブラウザーまたはマシンが対応していない可能性があります。");
+      return;
+    }
+
+    const vertex = [
+      -1, 1, 0, 0,
+      1, 1, 1, 0,
+      -1, -1, 0, 1,
+      1, -1, 1, 1
+    ];
+
+    program = gl.createProgram();
+    vs = document.getElementById("vs");
+    attachShader(gl, program, vs.text, gl.VERTEX_SHADER);
+    fs = document.getElementById("fs");
+    attachShader(gl, program, fs.text, gl.FRAGMENT_SHADER);
+    gl.linkProgram(program);
+
+    gl.useProgram(program);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.uniform1i(gl.getUniformLocation(program, "tex"), 0);
+
+    vtx = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, vtx);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertex), gl.STATIC_DRAW);
+
+    vao = gl.createVertexArray();
+    gl.bindVertexArray(vao);
+    gl.enableVertexAttribArray(0);
+    gl.enableVertexAttribArray(1);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 16, 0);
+    gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 16, 8);
+    gl.bindVertexArray(null);
+
+    // クリアカラーを黒に設定し、完全に不透明にします
+    gl.clearColor(0.0, 0.0, 0.0, 1.0);
+    // 指定されたクリアカラーでカラーバッファーをクリアします
+    render();
+  };
+  img.crossOrigin = "anonymous";
+  img.src = "./300px-Noah_-_Grayscale_spectrogram_by_mkjpg.jpg";
+
+}
+
+function render() {
+  gl.clear(gl.COLOR_BUFFER_BIT);
+
+  gl.useProgram(program);
+  gl.bindVertexArray(vao);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  gl.bindVertexArray(null);
+  gl.useProgram(null);
+}
+
+window.onload = main;
+        </script>
+        
+        <style>
+.curve-editor {
+    display: block;
+    width: 640;
+    height: 100;
+    top: 530;
+    left: 320;
+    background-color: gray;
+}
+        </style>
+    </head>
+    <body style="margin:0px;padding:0px">
+        <canvas id="glCanvas"  width="640" height="480">
+
+        </canvas>
+        <div style="display:flex">
+            <div class="curve-editor" id="plot">
+                
+            </div>
+            <img src="./heatmap.png" width="10" height="100">
+            <p>
+              点をクリックすると，掴み状態になり<br>マウス移動に点がついてくるようになる<br>
+              掴み状態でもう一度クリックすると点を離す．
+            </p>
+        </div>
+        <script>
+            var trace1 = {
+              x: [0, 0.5, 1],
+              y: [0, 0.5, 1],
+              type: 'scatter',
+              marker: {size: 12}
+            };
+            var data = [trace1];
+
+            var layout = {
+              showlegend: false,
+              margin:{
+                't': 0,
+                'b': 0,
+                'l': 0,
+                'r': 0
+              },
+              yaxis: {
+                range: [0, 1]
+              },
+              xaxis: {
+                range: [0, 1]
+              }
+            }
+            var fig = Plotly.newPlot("plot", data, layout);
+            var selectedPoint = null;
+            g = document.getElementById("plot");
+            g.on("plotly_click", function(data) {
+              pn = data.points[0].pointNumber;
+              if(pn == selectedPoint) {
+                selectedPoint = null;
+              } else {
+                selectedPoint = pn
+              }
+            });
+            g.addEventListener('mousemove', function(evt) {
+              if(selectedPoint) {
+                let x = evt.x / 640;
+                let y = 1 - (evt.y - 480) / 100;
+                data[0].x[selectedPoint] = x;
+                data[0].y[selectedPoint] = y;
+                
+                gl.useProgram(program);
+                gl.uniform2f(gl.getUniformLocation(program, "inner"), x, y);
+                render();
+                Plotly.update("plot", data, layout);
+              }
+            });
+          </script>
+    </body>
+</html>
